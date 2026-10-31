@@ -9,6 +9,16 @@ Manually preparing and sending result emails to individual students can be time-
 
 The teacher uploads an Excel file containing student information and subject-wise marks and provides their email address. The workflow processes the data, generates personalized HTML result reports, sends emails through Gmail, and sends a final confirmation email to the teacher.
 
+## 🚀 Live Demo
+
+Try the Student Result Analysis & Email Automation Agent using the link below:
+
+**[👉 Open Live Demo](https://student-marks-agent.app.n8n.cloud/form/student-results)**
+
+Upload an Excel file containing student details and subject-wise marks, enter the teacher's email address, and submit the form to start the automation.
+
+**Note:** Please use sample student data for testing. Submitting the form may trigger real emails to the addresses included in the Excel file.
+
 ## ✨ Features
 
 - 📂 Excel file upload through an n8n form.
