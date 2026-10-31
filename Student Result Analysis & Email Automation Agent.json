@@ -1,0 +1,463 @@
+{
+  "name": "Student Result Analysis & Email Automation Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Student Result Upload",
+        "formDescription": "Upload an Excel file with columns for student name, roll number, email, and any number of subject columns. Enter your email to receive a completion summary.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Excel File Upload",
+              "fieldType": "file",
+              "fieldName": "Excel_File",
+              "acceptFileTypes": ".xlsx,.xls",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Teacher Email Address",
+              "fieldType": "email",
+              "fieldName": "teacher_email",
+              "placeholder": "Completion summary will be sent here",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "path": "student-results",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "File received. Reports are being processed and emailed."
+            }
+          }
+        }
+      },
+      "id": "e2b8546a-410c-44fe-9195-cfa0cb901600",
+      "name": "Teacher Upload Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        192
+      ],
+      "webhookId": "880edff5-600d-4ba0-a902-420079302826"
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "Excel_File",
+        "options": {
+          "headerRow": true,
+          "includeEmptyCells": true
+        }
+      },
+      "id": "4af2468d-e1c9-4479-a4fb-b0768d0c58a3",
+      "name": "Read Excel File",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.2,
+      "position": [
+        224,
+        192
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e1",
+              "name": "status",
+              "type": "string",
+              "value": "ERROR: Excel file could not be read"
+            },
+            {
+              "id": "e2",
+              "name": "details",
+              "type": "string",
+              "value": "={{ $json.error ? ($json.error.message || $json.error) : \"Please upload a valid .xlsx or .xls file with a header row.\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "3dc32560-6473-453d-a7e5-e2b29bc57221",
+      "name": "Excel Parsing Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        448,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst rows = $input.all().map(i => i.json).filter(r => Object.keys(r).length > 0);\nconst form = $('Teacher Upload Form').first().json;\nconst emailRe = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\nconst esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');\nconst norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');\nif (rows.length === 0) throw new Error('The Excel file has no student rows.');\n\nconst headers = Object.keys(rows[0]);\nconst find = test => headers.find(h => test(norm(h)));\nconst nameCol = find(h => h.includes('name'));\nconst rollCol = find(h => h.includes('roll'));\nconst emailCol = find(h => h.includes('email') || h.includes('mail'));\nif (!nameCol || !rollCol || !emailCol) throw new Error('Excel must have Name, Roll Number and Email columns. Found: ' + headers.join(', '));\nconst subjects = headers.filter(h => h !== nameCol && h !== rollCol && h !== emailCol && String(h).trim() !== '');\n\nconst colors = ['#e8f0fe', '#fff4e5', '#e6f6ec', '#fdeaf1', '#f1ebfd'];\nconst out = [];\nfor (const r of rows) {\n  const name = String(r[nameCol] ?? '').trim();\n  const roll = String(r[rollCol] ?? '').trim();\n  const email = String(r[emailCol] ?? '').trim();\n  let problem = '';\n  if (!name) problem = 'Missing name';\n  else if (!roll) problem = 'Missing roll number';\n  else if (!email) problem = 'Missing email';\n  else if (!emailRe.test(email)) problem = 'Invalid email: ' + email;\n  if (problem) { out.push({ json: { valid: false, studentName: name, rollNumber: roll, email, reason: problem } }); continue; }\n  const tr = subjects.map((s, idx) => {\n    const v = r[s];\n    const mark = (v === undefined || v === null || String(v).trim() === '') ? '-' : String(v);\n    return '<tr style=\"background:' + colors[idx % colors.length] + ';\"><td style=\"padding:10px 14px;border:1px solid #d0d7e2;\">' + esc(s) + '</td><td style=\"padding:10px 14px;border:1px solid #d0d7e2;text-align:center;font-weight:bold;color:#1a237e;\">' + esc(mark) + '</td></tr>';\n  }).join('');\n  const html = '<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:auto;border:1px solid #d0d7e2;border-radius:10px;overflow:hidden;\">'\n    + '<div style=\"background:linear-gradient(90deg,#3949ab,#8e24aa);padding:24px;color:#ffffff;text-align:center;\"><h1 style=\"margin:0;font-size:24px;\">Student Result Report</h1></div>'\n    + '<div style=\"padding:24px;background:#ffffff;\">'\n    + '<p style=\"font-size:16px;color:#333;\">Dear <b>' + esc(name) + '</b>,</p>'\n    + '<p style=\"color:#555;\">Here are your results.</p>'\n    + '<p style=\"color:#333;\"><b>Name:</b> ' + esc(name) + '<br><b>Roll Number:</b> ' + esc(roll) + '</p>'\n    + '<table style=\"border-collapse:collapse;width:100%;margin-top:12px;\"><tr style=\"background:#3949ab;color:#ffffff;\"><th style=\"padding:10px 14px;text-align:left;border:1px solid #3949ab;\">Subject</th><th style=\"padding:10px 14px;border:1px solid #3949ab;\">Marks</th></tr>' + tr + '</table>'\n    + '</div><div style=\"background:#f5f5f5;padding:12px;text-align:center;color:#888;font-size:12px;\">This is an automated result report.</div></div>';\n  out.push({ json: { valid: true, studentName: name, rollNumber: roll, email, sendTo: email, subject: 'Result Report - ' + name + ' (Roll ' + roll + ')', html } });\n}\nreturn out;\n"
+      },
+      "id": "6ef688d3-749d-48e8-8429-ea81d718e9d5",
+      "name": "Validate Rows & Build HTML Emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "88562c0c-0499-4bc5-b698-1e08c2555764",
+      "name": "Is Row Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.sendTo }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c032519c-07cd-4149-a500-2f41cd7fc8fd",
+      "name": "Send Result Email via Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        896,
+        0
+      ],
+      "webhookId": "06f05dd4-df47-46fd-b312-495cffc12c1a",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "fGVJinBkDTpSpSsV",
+          "name": "Gmail account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "m1",
+              "name": "status",
+              "type": "string",
+              "value": "SENT"
+            },
+            {
+              "id": "m2",
+              "name": "student",
+              "type": "string",
+              "value": "={{ $(\"Is Row Valid?\").item.json.studentName }} ({{ $(\"Is Row Valid?\").item.json.email }})"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "ab002b6c-187d-402d-b33d-8952a64f6f03",
+      "name": "Mark Email Sent",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1200,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "status",
+              "type": "string",
+              "value": "EMAIL FAILED"
+            },
+            {
+              "id": "f2",
+              "name": "student",
+              "type": "string",
+              "value": "={{ $(\"Is Row Valid?\").item.json.studentName }} ({{ $(\"Is Row Valid?\").item.json.email }})"
+            },
+            {
+              "id": "f3",
+              "name": "error",
+              "type": "string",
+              "value": "={{ $json[\"error\"] ? ($json[\"error\"].message || $json[\"error\"]) : \"Unknown Gmail error\" }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "12b65097-d685-483f-b1ee-dde549e7ef16",
+      "name": "Email Sending Failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        176
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "status",
+              "type": "string",
+              "value": "SKIPPED"
+            },
+            {
+              "id": "s2",
+              "name": "student",
+              "type": "string",
+              "value": "={{ $json.studentName }} ({{ $json.rollNumber }})"
+            },
+            {
+              "id": "s3",
+              "name": "reason",
+              "type": "string",
+              "value": "={{ $json.reason }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "70e57a4d-11e4-4c2f-a583-cd1b6e68a9cb",
+      "name": "Skipped Invalid Row",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "id": "abb82337-8a14-4c4b-970c-8cb5f4d2c388",
+      "name": "Wait for All Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        1392,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst items = $input.all().map(i => i.json);\nconst sent = items.filter(i => i.status === 'SENT');\nconst failed = items.filter(i => i.status === 'EMAIL FAILED');\nconst skipped = items.filter(i => i.status === 'SKIPPED');\nconst form = $('Teacher Upload Form').first().json;\nconst teacherEmail = String(form['teacher_email'] || '').trim();\nconst esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst list = (arr, fn) => arr.length ? '<ul style=\"margin:6px 0 0 18px;padding:0;color:#444;\">' + arr.map(a => '<li>' + esc(fn(a)) + '</li>').join('') + '</ul>' : '';\nconst card = (n, label, color) => '<td style=\"width:33%;padding:6px;\"><div style=\"background:' + color + ';border-radius:8px;padding:16px;text-align:center;color:#ffffff;\"><div style=\"font-size:30px;font-weight:bold;\">' + n + '</div><div style=\"font-size:13px;\">' + label + '</div></div></td>';\nlet html = '<div style=\"font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:auto;border:1px solid #d0d7e2;border-radius:10px;overflow:hidden;\">'\n  + '<div style=\"background:linear-gradient(90deg,#00897b,#3949ab);padding:24px;color:#ffffff;text-align:center;\"><h1 style=\"margin:0;font-size:24px;\">Sending Completed</h1></div>'\n  + '<div style=\"padding:24px;background:#ffffff;\">'\n  + '<p style=\"font-size:16px;color:#333;\">Hello,</p>'\n  + '<p style=\"color:#555;\">' + 'All student result emails have been processed. Here is the summary:</p>'\n  + '<table style=\"width:100%;border-collapse:collapse;\"><tr>' + card(sent.length, 'Sent successfully', '#43a047') + card(failed.length, 'Failed', '#e53935') + card(skipped.length, 'Skipped (invalid data)', '#fb8c00') + '</tr></table>';\nif (failed.length) html += '<h3 style=\"color:#e53935;margin-bottom:0;\">Failed emails</h3>' + list(failed, f => f.student + ' - ' + f.error);\nif (skipped.length) html += '<h3 style=\"color:#fb8c00;margin-bottom:0;\">Skipped rows</h3>' + list(skipped, f => f.student + ' - ' + f.reason);\nhtml += '</div><div style=\"background:#f5f5f5;padding:12px;text-align:center;color:#888;font-size:12px;\">Automated message from the Student Result workflow.</div></div>';\nreturn [{ json: { teacherEmail, subject: 'Student Result Reports - Sending Completed', html, sentCount: sent.length, failedCount: failed.length } }];\n"
+      },
+      "id": "cdf22afd-71ae-441e-ad58-d4454300cfad",
+      "name": "Count Results & Build Teacher Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.teacherEmail }}",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "eb784cf9-a76c-4100-b701-41fb3048886b",
+      "name": "Send Teacher Confirmation Email",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        1920,
+        368
+      ],
+      "webhookId": "b0008fad-0352-43bb-a1bb-595b6f099761",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "fGVJinBkDTpSpSsV",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Teacher Upload Form": {
+      "main": [
+        [
+          {
+            "node": "Read Excel File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Excel File": {
+      "main": [
+        [
+          {
+            "node": "Validate Rows & Build HTML Emails",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Excel Parsing Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Rows & Build HTML Emails": {
+      "main": [
+        [
+          {
+            "node": "Is Row Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Row Valid?": {
+      "main": [
+        [
+          {
+            "node": "Send Result Email via Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Skipped Invalid Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Result Email via Gmail": {
+      "main": [
+        [
+          {
+            "node": "Mark Email Sent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Email Sending Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Email Sent": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email Sending Failed": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Results",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Skipped Invalid Row": {
+      "main": [
+        [
+          {
+            "node": "Wait for All Results",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "Wait for All Results": {
+      "main": [
+        [
+          {
+            "node": "Count Results & Build Teacher Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count Results & Build Teacher Email": {
+      "main": [
+        [
+          {
+            "node": "Send Teacher Confirmation Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "a0d649df-172d-42f2-853b-420429e17647",
+  "meta": {
+    "instanceId": "eb94301a1006500cf21fbd28176a36668e305e2476ce5d19d59ba4a3da62a0ea"
+  },
+  "nodeGroups": [],
+  "id": "0K7dmD5LYtXxA0as",
+  "tags": []
+}
