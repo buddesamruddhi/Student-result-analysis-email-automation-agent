@@ -110,9 +110,8 @@ After processing the student records, the teacher receives a summary containing:
 
 Computer Science Engineering Student
 
-- GitHub: [buddesamruddhi](https://github.com/buddesamruddhi)
-- LinkedIn: [Samruddhi Budde](https://linkedin.com/in/samruddhi-budde-23354932b)
+- GitHub: https://github.com/buddesamruddhi
 
----
+
 
 *This project demonstrates workflow automation, spreadsheet processing, HTML email generation, and Gmail integration using n8n.*
